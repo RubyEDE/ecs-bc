@@ -10,6 +10,14 @@ export interface GasConfig {
     entityCreate: number;
     entityDestroy: number;
     iteration: number;
+    // New gas costs for enhanced features
+    defineComponent: number;
+    addComponent: number;
+    updateComponent: number;
+    removeComponent: number;
+    eventSubscribe: number;
+    eventEmit: number;
+    crossSystemCall: number;
   };
 }
 
@@ -22,6 +30,14 @@ export const DEFAULT_GAS_CONFIG: GasConfig = {
     entityCreate: 5,
     entityDestroy: 3,
     iteration: 1,
+    // New default costs
+    defineComponent: 20,
+    addComponent: 3,
+    updateComponent: 2,
+    removeComponent: 2,
+    eventSubscribe: 5,
+    eventEmit: 8,
+    crossSystemCall: 15,
   }
 };
 

@@ -32,30 +32,37 @@ export interface LoadResult {
  */
 export class SystemLoader {
   private readonly securityValidator: SecurityValidator;
-  private readonly tsCompiler: TypeScriptCompiler;
   private readonly config: SystemLoaderConfig;
+  private readonly tsCompiler: TypeScriptCompiler;
   private readonly loadedSystems = new Map<string, LoadResult>();
 
   constructor(config: SystemLoaderConfig = {}) {
-    this.config = config;
+    this.config = {
+      security: { ...DEFAULT_SECURITY_CONFIG, ...(config.security || {}) },
+      defaultGasConfig: config.defaultGasConfig || {},
+      vmTimeout: config.vmTimeout || 5000,
+      workingDirectory: config.workingDirectory || process.cwd(),
+    };
+
+    this.securityValidator = new SecurityValidator(this.config.security as SecurityConfig);
     this.tsCompiler = new TypeScriptCompiler();
-    
-    // Create security config by merging with defaults if partial config provided
-    const securityConfig = config.security ? {
-      allowedGlobals: config.security.allowedGlobals ?? DEFAULT_SECURITY_CONFIG.allowedGlobals,
-      blockedPatterns: config.security.blockedPatterns ?? DEFAULT_SECURITY_CONFIG.blockedPatterns,
-      maxSourceLength: config.security.maxSourceLength ?? DEFAULT_SECURITY_CONFIG.maxSourceLength,
-    } : undefined;
-    this.securityValidator = new SecurityValidator(securityConfig);
   }
 
   /**
-   * Load a system from TypeScript source code
-   * @param source TypeScript source code
-   * @param fileName Optional filename for error reporting
-   * @returns Loaded system
+   * Load a user-defined system from TypeScript source code
+   * @param source TypeScript source code defining a system
+   * @param filename Optional filename for better error messages
+   * @param deploymentOptions Optional deployment configuration
+   * @returns UserSystem instance with unique deployment ID
    */
-  loadFromSource(source: string, fileName?: string): UserSystem {
+  loadFromSource(
+    source: string, 
+    filename?: string,
+    deploymentOptions?: { 
+      uniqueId?: string;
+      instanceSuffix?: string;
+    }
+  ): UserSystem {
     const startTime = performance.now();
 
     try {
@@ -72,31 +79,45 @@ export class SystemLoader {
       const wrappedSource = this.wrapSourceCode(source);
 
       // 4. Compile TypeScript to JavaScript
-      const compiledJS = this.tsCompiler.compile(wrappedSource, fileName || 'user-system.ts');
+      const compiledJS = this.tsCompiler.compile(wrappedSource, filename || 'user-system.ts');
 
-      // 5. Create secure VM context and execute
-      const vm = new VM({
-        timeout: this.config.vmTimeout ?? 5000,
-        sandbox: this.createSecureSandbox(),
+      // 5. Execute in secure sandbox
+      const result = this.executeInSandbox(compiledJS, filename);
+      
+      if (!result || typeof result !== 'object' || typeof result.execute !== 'function') {
+        throw new Error('System source must export a valid system definition');
+      }
+
+      // 6. Generate unique system ID for deployment
+      const originalName = result.name || 'UnnamedSystem';
+      const uniqueSystemId = this.generateUniqueSystemId(originalName, deploymentOptions);
+
+      // 7. Create UserSystem with unique ID
+      const userSystem = new UserSystem({
+        name: uniqueSystemId,
+        required: result.required || [],
+        execute: result.execute,
+        init: result.init,
+        cleanup: result.cleanup,
+        gasConfig: { ...this.config.defaultGasConfig, ...result.gasConfig },
       });
 
-      const result = vm.run(compiledJS);
-      
-      // 6. Validate that the result is a system
-      const system = this.validateSystemResult(result);
-      
+      // Store original name as metadata for debugging
+      (userSystem as any).originalName = originalName;
+      (userSystem as any).deploymentId = uniqueSystemId;
+
       const loadTime = performance.now() - startTime;
 
-      // 7. Cache the loaded system
+      // 8. Cache the loaded system
       const loadResult: LoadResult = {
-        system,
+        system: userSystem,
         source,
         compiledJS,
         loadTime,
       };
-      this.loadedSystems.set(system.name, loadResult);
+      this.loadedSystems.set(userSystem.name, loadResult);
 
-      return system;
+      return userSystem;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to load system: ${error.message}`);
@@ -364,60 +385,37 @@ export class SystemLoader {
   }
 
   /**
-   * Validate that the VM result is a valid system with strong type checking
+   * Execute code in secure sandbox
    */
-  private validateSystemResult(result: any): UserSystem {
-    if (!result) {
-      throw new Error('System code must return a valid system (got null/undefined)');
-    }
+  private executeInSandbox(compiledJS: string, filename?: string): any {
+    const vm = new VM({
+      timeout: this.config.vmTimeout || 5000,
+      sandbox: this.createSecureSandbox(),
+    });
 
-    if (typeof result !== 'object') {
-      throw new Error(`System code must return an object (got ${typeof result})`);
-    }
+    return vm.run(compiledJS);
+  }
 
-    // Check required properties
-    const requiredProps = ['name', 'id', 'componentTypes', 'execute'];
-    for (const prop of requiredProps) {
-      if (!(prop in result)) {
-        throw new Error(`System is missing required property: ${prop}`);
-      }
+  /**
+   * Generate a unique system ID for deployment
+   */
+  private generateUniqueSystemId(
+    originalName: string, 
+    options?: { uniqueId?: string; instanceSuffix?: string }
+  ): string {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    
+    if (options?.uniqueId) {
+      return `${originalName}_${options.uniqueId}`;
     }
-
-    // Validate property types
-    if (typeof result.name !== 'string' || result.name.trim() === '') {
-      throw new Error('System name must be a non-empty string');
+    
+    if (options?.instanceSuffix) {
+      return `${originalName}_${options.instanceSuffix}_${timestamp}`;
     }
-
-    if (typeof result.id !== 'number' || !Number.isInteger(result.id) || result.id < 0) {
-      throw new Error('System id must be a non-negative integer');
-    }
-
-    if (!Array.isArray(result.componentTypes)) {
-      throw new Error('System componentTypes must be an array');
-    }
-
-    if (typeof result.execute !== 'function') {
-      throw new Error('System execute must be a function');
-    }
-
-    // Validate optional properties
-    if (result.init !== undefined && typeof result.init !== 'function') {
-      throw new Error('System init must be a function if provided');
-    }
-
-    if (result.cleanup !== undefined && typeof result.cleanup !== 'function') {
-      throw new Error('System cleanup must be a function if provided');
-    }
-
-    // Validate component types
-    for (let i = 0; i < result.componentTypes.length; i++) {
-      const comp = result.componentTypes[i];
-      if (!comp || typeof comp !== 'object' || typeof comp.id !== 'number' || typeof comp.name !== 'string') {
-        throw new Error(`Invalid component type at index ${i}: must have id and name properties`);
-      }
-    }
-
-    return result as UserSystem;
+    
+    // Default: originalName + timestamp + random
+    return `${originalName}_${timestamp}_${random}`;
   }
 }
 

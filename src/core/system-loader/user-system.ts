@@ -2,7 +2,7 @@ import { System } from '../system';
 import { ComponentType } from '../component';
 import { World } from '../world';
 import { SystemContext } from './system-context';
-import { GasTracker, GasConfig } from './gas-tracker';
+import { GasTracker, GasConfig, DEFAULT_GAS_CONFIG } from './gas-tracker';
 
 /**
  * User-defined system definition interface
@@ -34,18 +34,11 @@ export class UserSystem implements System {
     this.componentTypes = definition.required;
     this.definition = definition;
     
-    // Merge gas config with defaults
+    // Merge gas config with defaults - use DEFAULT_GAS_CONFIG for complete config
     this.gasConfig = {
-      maxGas: definition.gasConfig?.maxGas ?? 10000,
+      maxGas: definition.gasConfig?.maxGas ?? DEFAULT_GAS_CONFIG.maxGas,
       gasCosts: {
-        ...{
-          entityQuery: 10,
-          componentAccess: 1,
-          componentUpdate: 2,
-          entityCreate: 5,
-          entityDestroy: 3,
-          iteration: 1,
-        },
+        ...DEFAULT_GAS_CONFIG.gasCosts,
         ...definition.gasConfig?.gasCosts,
       },
     };

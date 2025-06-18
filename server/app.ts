@@ -11,18 +11,6 @@ import { SystemPriority } from '../src/core/system';
 const app = express();
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-// Register basic components that users can use in their systems
-const PositionComponent = componentRegistry.register('Position', class {
-  constructor(public x: number = 0, public y: number = 0) {}
-});
-
-const VelocityComponent = componentRegistry.register('Velocity', class {
-  constructor(public dx: number = 0, public dy: number = 0) {}
-});
-
-const HealthComponent = componentRegistry.register('Health', class {
-  constructor(public current: number = 100, public max: number = 100) {}
-});
 
 // Create ECS World instance with security configuration
 const world = new World({
@@ -125,7 +113,6 @@ app.get('/api/components', (req: any, res: any) => {
 // Start server
 app.listen(port, () => {
   console.log(`🚀 ECS System API Server running on port ${port}`);
-  console.log(`📦 Registered components: ${[PositionComponent.name, VelocityComponent.name, HealthComponent.name].join(', ')}`);
   console.log(`🌐 Server endpoints:`);
   console.log(`  GET  http://localhost:${port}/health`);
   console.log(`  POST http://localhost:${port}/api/systems/deploy`);
