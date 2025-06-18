@@ -7,37 +7,24 @@
   "packageManager": "yarn@4.9.2",
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules src/index.ts",
-    "dev:server": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules src/server/server.ts",
+    "dev": "tsx watch server/app.ts",
     "dev:watch": "concurrently \"tsc --watch\" \"nodemon --watch dist --exec node dist/index.js\"",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:system-loader": "npx ts-node src/test-system-loader.ts",
-    "test:comprehensive": "npx ts-node src/test-comprehensive.ts",
-    "test:security": "npx ts-node src/test-security.ts",
-    "test:custom": "npx ts-node src/test-custom.ts",
-    "test:all": "npm run test:system-loader && npm run test:comprehensive && npm run test:security",
     "clean": "rm -rf dist",
     "example": "node dist/examples/basic.js",
-    "start": "node server.js",
-    "server": "node dist/server/server.js"
+    "start": "npm run build && node dist/index.js",
+    "start:server": "tsx server/app.ts"
   },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "fs-extra": "^11.3.0",
+    "express": "^5.1.0",
+    "fs-extra": "^11.0.4",
     "vm2": "^3.9.19"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/fs-extra": "^11.0.4",
-    "@types/jest": "^29.5.0",
     "@types/node": "^24.0.3",
     "concurrently": "^9.1.2",
-    "jest": "^29.5.0",
     "nodemon": "^3.1.10",
-    "ts-jest": "^29.1.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.8.3"
