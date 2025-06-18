@@ -5,6 +5,7 @@ import { ComponentArrayPool } from './component-storage';
 import { Archetype } from './archetype';
 import { Query, QueryIterator, ExactQuery, WithQuery, WithoutQuery, QueryBuilder } from './query';
 import { System, SystemScheduler, SystemPriority } from './system';
+import { SystemLoader, UserSystem, SystemLoaderConfig } from './system-loader';
 
 /**
  * World is the central ECS manager that coordinates all entities, components, and systems
@@ -13,6 +14,7 @@ export class World {
   private entityAllocator = new EntityAllocator();
   private componentArrayPool = new ComponentArrayPool();
   private systemScheduler = new SystemScheduler();
+  private systemLoader: SystemLoader;
   
   // Archetype management
   private archetypes = new Map<string, Archetype>();
@@ -26,6 +28,10 @@ export class World {
   // Performance tracking
   private frameCount = 0;
   private lastFrameTime = 0;
+  
+  constructor(systemLoaderConfig?: SystemLoaderConfig) {
+    this.systemLoader = new SystemLoader(systemLoaderConfig);
+  }
   
   /**
    * Create a new entity
@@ -448,5 +454,59 @@ export class World {
   private generateQueryCacheKey(type: string, componentTypes: readonly ComponentType[]): string {
     const ids = componentTypes.map(t => t.id).sort().join(',');
     return `${type}:${ids}`;
+  }
+  
+  /**
+   * Load and register a user-defined system from TypeScript source code
+   * @param source TypeScript source code
+   * @param priority System execution priority
+   * @returns The loaded system ID
+   */
+  loadSystemFromSource(source: string, priority: number = SystemPriority.USER): number {
+    const system = this.systemLoader.loadFromSource(source);
+    return this.addSystem(system, priority);
+  }
+  
+  /**
+   * Load a system from a TypeScript file using SystemLoader
+   * @param filePath Path to TypeScript file
+   * @returns Promise resolving to loaded system
+   */
+  async loadSystemFromFile(filePath: string): Promise<UserSystem> {
+    return await this.systemLoader.loadFromFile(filePath);
+  }
+  
+  /**
+   * Get a loaded user system by name
+   * @param name System name
+   * @returns The user system or undefined
+   */
+  getLoadedSystem(name: string): UserSystem | undefined {
+    return this.systemLoader.getLoadedSystem(name);
+  }
+  
+  /**
+   * Get all loaded user systems
+   * @returns Array of loaded user systems
+   */
+  getAllLoadedSystems(): UserSystem[] {
+    return this.systemLoader.getAllLoadedSystems();
+  }
+  
+  /**
+   * Unload a user system
+   * @param name System name
+   */
+  unloadSystem(name: string): void {
+    this.systemLoader.unloadSystem(name);
+    this.removeSystem(name);
+  }
+  
+  /**
+   * Get access to the system loader for inspection
+   * @returns SystemLoader instance
+   */
+  getSystemLoader(): SystemLoader {
+    return this.systemLoader;
   }
 } 

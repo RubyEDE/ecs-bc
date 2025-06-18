@@ -34,14 +34,15 @@ export interface System {
 }
 
 /**
- * System priority levels for execution order
+ * System execution priority levels
  */
 export enum SystemPriority {
   HIGHEST = 0,
-  HIGH = 100,
-  NORMAL = 500,
-  LOW = 800,
-  LOWEST = 1000
+  HIGH = 25,
+  NORMAL = 50,
+  LOW = 75,
+  LOWEST = 100,
+  USER = 1000  // User-defined systems start at 1000
 }
 
 /**
