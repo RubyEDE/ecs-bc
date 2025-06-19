@@ -15,6 +15,15 @@ export class ComponentRegistry {
   private components = new Map<string, ComponentType>();
   private componentsById = new Map<number, ComponentType>();
   private nextId = 0;
+  private onIdRegistered?: (id: number) => void;
+  
+  /**
+   * Set callback to be notified when component IDs are registered
+   * Used for coordination with dynamic component registry
+   */
+  setIdRegistrationCallback(callback: (id: number) => void): void {
+    this.onIdRegistered = callback;
+  }
   
   /**
    * Register a new component type
@@ -35,6 +44,11 @@ export class ComponentRegistry {
     
     this.components.set(name, componentType);
     this.componentsById.set(componentType.id, componentType);
+    
+    // Notify dynamic registry of new static component ID
+    if (this.onIdRegistered) {
+      this.onIdRegistered(componentType.id);
+    }
     
     return componentType;
   }

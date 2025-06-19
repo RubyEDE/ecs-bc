@@ -1,19 +1,19 @@
 /**
- * Component mask for efficient archetype matching using bigint
- * Supports up to 64 component types efficiently
+ * Component mask for efficient archetype matching
+ * Supports unlimited component types for prototyping
  */
 export class ComponentMask {
-  private mask: bigint = 0n;
+  private componentIds = new Set<number>();
   
   /**
    * Set a component bit in the mask
    * @param componentId The component ID to set
    */
   set(componentId: number): void {
-    if (componentId < 0 || componentId >= 64) {
-      throw new Error(`Component ID ${componentId} is out of range (0-63)`);
+    if (componentId < 0) {
+      throw new Error(`Component ID ${componentId} must be non-negative`);
     }
-    this.mask |= 1n << BigInt(componentId);
+    this.componentIds.add(componentId);
   }
   
   /**
@@ -22,10 +22,10 @@ export class ComponentMask {
    * @returns True if the component is in the mask
    */
   has(componentId: number): boolean {
-    if (componentId < 0 || componentId >= 64) {
+    if (componentId < 0) {
       return false;
     }
-    return (this.mask & (1n << BigInt(componentId))) !== 0n;
+    return this.componentIds.has(componentId);
   }
   
   /**
@@ -33,10 +33,10 @@ export class ComponentMask {
    * @param componentId The component ID to clear
    */
   clearComponent(componentId: number): void {
-    if (componentId < 0 || componentId >= 64) {
+    if (componentId < 0) {
       return;
     }
-    this.mask &= ~(1n << BigInt(componentId));
+    this.componentIds.delete(componentId);
   }
   
   /**
@@ -45,7 +45,15 @@ export class ComponentMask {
    * @returns True if masks are equal
    */
   equals(other: ComponentMask): boolean {
-    return this.mask === other.mask;
+    if (this.componentIds.size !== other.componentIds.size) {
+      return false;
+    }
+    for (const id of this.componentIds) {
+      if (!other.componentIds.has(id)) {
+        return false;
+      }
+    }
+    return true;
   }
   
   /**
@@ -54,7 +62,12 @@ export class ComponentMask {
    * @returns True if this mask contains all components in other
    */
   contains(other: ComponentMask): boolean {
-    return (this.mask & other.mask) === other.mask;
+    for (const id of other.componentIds) {
+      if (!this.componentIds.has(id)) {
+        return false;
+      }
+    }
+    return true;
   }
   
   /**
@@ -64,7 +77,11 @@ export class ComponentMask {
    */
   intersect(other: ComponentMask): ComponentMask {
     const result = new ComponentMask();
-    result.mask = this.mask & other.mask;
+    for (const id of this.componentIds) {
+      if (other.componentIds.has(id)) {
+        result.componentIds.add(id);
+      }
+    }
     return result;
   }
   
@@ -75,54 +92,45 @@ export class ComponentMask {
    */
   union(other: ComponentMask): ComponentMask {
     const result = new ComponentMask();
-    result.mask = this.mask | other.mask;
+    for (const id of this.componentIds) {
+      result.componentIds.add(id);
+    }
+    for (const id of other.componentIds) {
+      result.componentIds.add(id);
+    }
     return result;
   }
   
   /**
-   * Get the raw mask value
-   * @returns The bigint mask value
+   * Get the component IDs as a set
+   * @returns Set of component IDs
    */
-  getMask(): bigint {
-    return this.mask;
+  getComponentIdSet(): Set<number> {
+    return new Set(this.componentIds);
   }
   
   /**
-   * Set the raw mask value
-   * @param mask The bigint mask value
+   * Set the component IDs from a set
+   * @param componentIds Set of component IDs
    */
-  setMask(mask: bigint): void {
-    this.mask = mask;
+  setComponentIds(componentIds: Set<number>): void {
+    this.componentIds = new Set(componentIds);
   }
   
   /**
-   * Get count of set bits in the mask
+   * Get count of components in the mask
    * @returns Number of components in the mask
    */
   getComponentCount(): number {
-    let count = 0;
-    let mask = this.mask;
-    while (mask !== 0n) {
-      if ((mask & 1n) === 1n) {
-        count++;
-      }
-      mask >>= 1n;
-    }
-    return count;
+    return this.componentIds.size;
   }
   
   /**
    * Get array of component IDs in the mask
-   * @returns Array of component IDs
+   * @returns Array of component IDs (sorted)
    */
   getComponentIds(): number[] {
-    const ids: number[] = [];
-    for (let i = 0; i < 64; i++) {
-      if (this.has(i)) {
-        ids.push(i);
-      }
-    }
-    return ids;
+    return Array.from(this.componentIds).sort((a, b) => a - b);
   }
   
   /**
@@ -131,7 +139,7 @@ export class ComponentMask {
    */
   clone(): ComponentMask {
     const result = new ComponentMask();
-    result.mask = this.mask;
+    result.componentIds = new Set(this.componentIds);
     return result;
   }
   
@@ -139,7 +147,7 @@ export class ComponentMask {
    * Clear all components from the mask
    */
   clearAll(): void {
-    this.mask = 0n;
+    this.componentIds.clear();
   }
   
   /**
@@ -147,7 +155,7 @@ export class ComponentMask {
    * @returns True if no components are set
    */
   isEmpty(): boolean {
-    return this.mask === 0n;
+    return this.componentIds.size === 0;
   }
   
   /**
@@ -155,7 +163,8 @@ export class ComponentMask {
    * @returns String representation of the mask
    */
   toString(): string {
-    return this.mask.toString(2).padStart(64, '0');
+    const ids = this.getComponentIds();
+    return `ComponentMask{${ids.join(',')}}`;
   }
   
   /**
@@ -172,13 +181,56 @@ export class ComponentMask {
   }
   
   /**
-   * Create a mask from a bigint value
+   * Create a mask from a set of component IDs
+   * @param componentIds Set of component IDs
+   * @returns New mask with specified components
+   */
+  static fromComponentIdSet(componentIds: Set<number>): ComponentMask {
+    const mask = new ComponentMask();
+    mask.componentIds = new Set(componentIds);
+    return mask;
+  }
+
+  // Legacy compatibility methods for bigint-based systems
+  
+  /**
+   * Get a bigint representation for the first 64 components (legacy compatibility)
+   * @returns Bigint mask for first 64 components
+   * @deprecated Use getComponentIds() or getComponentIdSet() instead
+   */
+  getMask(): bigint {
+    let mask = 0n;
+    for (const id of this.componentIds) {
+      if (id < 64) {
+        mask |= 1n << BigInt(id);
+      }
+    }
+    return mask;
+  }
+  
+  /**
+   * Set components from bigint value (legacy compatibility)
+   * @param mask Bigint mask value
+   * @deprecated Use setComponentIds() or set() instead
+   */
+  setMask(mask: bigint): void {
+    this.componentIds.clear();
+    for (let i = 0; i < 64; i++) {
+      if ((mask & (1n << BigInt(i))) !== 0n) {
+        this.componentIds.add(i);
+      }
+    }
+  }
+  
+  /**
+   * Create a mask from a bigint value (legacy compatibility)
    * @param mask The bigint mask value
    * @returns New mask with specified value
+   * @deprecated Use fromComponentIds() or fromComponentIdSet() instead
    */
   static fromMask(mask: bigint): ComponentMask {
     const result = new ComponentMask();
-    result.mask = mask;
+    result.setMask(mask);
     return result;
   }
 } 

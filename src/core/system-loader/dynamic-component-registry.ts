@@ -5,13 +5,94 @@ import { ComponentSchemaValidator } from './component-schema-validator';
 
 /**
  * Dynamic component registry for runtime component creation with namespacing
+ * Supports unlimited component types for prototyping
  */
 export class DynamicComponentRegistry {
   private componentRegistrations = new Map<string, ComponentRegistration>();
   private systemComponents = new Map<SystemId, Set<ComponentId>>();
   private hashedIdToRegistration = new Map<string, ComponentRegistration>();
   private schemaValidator = new ComponentSchemaValidator();
-  private nextComponentId = 10000; // Start dynamic components at 10000
+  
+  // ID management for unlimited components during prototyping
+  private usedIds = new Set<ComponentId>();
+  private nextDynamicId = 1000; // Start dynamic components at 1000 to avoid conflicts with static components
+  
+  constructor() {
+    // Initialize with current static component IDs
+    this.refreshStaticComponentIds();
+    
+    // Set up callback to track new static component registrations
+    componentRegistry.setIdRegistrationCallback((id: ComponentId) => {
+      this.reserveComponentId(id);
+    });
+  }
+
+  /**
+   * Refresh the list of used static component IDs
+   * Should be called when static components are registered
+   */
+  refreshStaticComponentIds(): void {
+    const staticComponents = componentRegistry.getAllTypes();
+    
+    // Clear only static component IDs (< 1000)
+    const dynamicIds = Array.from(this.usedIds).filter(id => id >= 1000);
+    this.usedIds.clear();
+    
+    // Re-add dynamic IDs
+    for (const id of dynamicIds) {
+      this.usedIds.add(id);
+    }
+    
+    // Add static component IDs
+    for (const component of staticComponents) {
+      if (component.id >= 0) {
+        this.usedIds.add(component.id);
+      }
+    }
+  }
+
+  /**
+   * Reserve a component ID to prevent dynamic allocation conflicts
+   * @param componentId The ID to reserve
+   */
+  reserveComponentId(componentId: ComponentId): void {
+    if (componentId < 0) {
+      throw new Error(`Component ID ${componentId} must be non-negative`);
+    }
+    this.usedIds.add(componentId);
+  }
+
+  /**
+   * Find the next available component ID
+   * @returns Available component ID
+   */
+  private allocateComponentId(): ComponentId {
+    // Find next available ID starting from nextDynamicId
+    while (this.usedIds.has(this.nextDynamicId)) {
+      this.nextDynamicId++;
+    }
+    
+    const allocatedId = this.nextDynamicId;
+    this.usedIds.add(allocatedId);
+    this.nextDynamicId++;
+    
+    return allocatedId;
+  }
+
+  /**
+   * Configure the dynamic component ID starting point
+   * @param startId Starting ID for dynamic components (default: 1000)
+   */
+  configureDynamicIdStart(startId: number): void {
+    if (startId < 0) {
+      throw new Error(`Dynamic ID start ${startId} must be non-negative`);
+    }
+    
+    // Only allow increasing the start ID to avoid conflicts
+    if (startId > this.nextDynamicId) {
+      this.nextDynamicId = startId;
+    }
+  }
 
   /**
    * Define a new component type at runtime with system-based namespacing
@@ -45,8 +126,11 @@ export class DynamicComponentRegistry {
       }
     }
 
-    // Create new component ID
-    const componentId = this.nextComponentId++;
+    // Refresh static component IDs before allocation
+    this.refreshStaticComponentIds();
+
+    // Allocate new component ID
+    const componentId = this.allocateComponentId();
 
     // Create component constructor
     const componentConstructor = class DynamicComponent {
@@ -173,11 +257,12 @@ export class DynamicComponentRegistry {
     const componentIds = this.systemComponents.get(systemId);
     if (!componentIds) return;
 
-    // Remove registrations
+    // Remove registrations and free IDs
     for (const registration of Array.from(this.hashedIdToRegistration.values())) {
       if (componentIds.has(registration.id)) {
         this.componentRegistrations.delete(registration.originalName + ':' + systemId);
         this.hashedIdToRegistration.delete(registration.hashedId);
+        this.usedIds.delete(registration.id); // Free the ID for reuse
       }
     }
 
@@ -193,6 +278,13 @@ export class DynamicComponentRegistry {
     systemsWithComponents: number;
     averageComponentsPerSystem: number;
     totalMemoryUsage: number;
+    usedIdSlots: number;
+    nextAvailableId: number;
+    idAllocationStrategy: {
+      dynamicIdStart: number;
+      nextDynamicId: number;
+      staticComponentCount: number;
+    };
   } {
     const totalComponents = this.hashedIdToRegistration.size;
     const systemsWithComponents = this.systemComponents.size;
@@ -206,11 +298,21 @@ export class DynamicComponentRegistry {
         return total + JSON.stringify(reg).length;
       }, 0);
 
+    const usedIdSlots = this.usedIds.size;
+    const staticComponentCount = Array.from(this.usedIds).filter(id => id < 1000).length;
+
     return {
       totalComponents,
       systemsWithComponents,
       averageComponentsPerSystem,
       totalMemoryUsage,
+      usedIdSlots,
+      nextAvailableId: this.nextDynamicId,
+      idAllocationStrategy: {
+        dynamicIdStart: 1000,
+        nextDynamicId: this.nextDynamicId,
+        staticComponentCount,
+      },
     };
   }
 
@@ -226,10 +328,22 @@ export class DynamicComponentRegistry {
    * Clear all dynamic components
    */
   clear(): void {
+    // Free all dynamic component IDs (>= 1000)
+    for (const registration of this.hashedIdToRegistration.values()) {
+      if (registration.id >= 1000) {
+        this.usedIds.delete(registration.id);
+      }
+    }
+    
     this.componentRegistrations.clear();
     this.systemComponents.clear();
     this.hashedIdToRegistration.clear();
-    this.nextComponentId = 10000;
+    
+    // Reset dynamic ID counter
+    this.nextDynamicId = 1000;
+    
+    // Refresh static component IDs
+    this.refreshStaticComponentIds();
   }
 }
 

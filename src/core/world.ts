@@ -509,4 +509,13 @@ export class World {
   getSystemLoader(): SystemLoader {
     return this.systemLoader;
   }
+  
+  /**
+   * Get the current generation for an entity ID
+   * @param entityId The entity ID
+   * @returns The current generation, or -1 if invalid
+   */
+  getCurrentGeneration(entityId: number): number {
+    return this.entityAllocator.getCurrentGeneration(entityId);
+  }
 } 
